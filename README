@@ -1,0 +1,6 @@
+DataStructureModule   |
+AtomicDataModule   |  |
+GlobalDataModule  <- <-  | |
+PBCModule <--------------  |
+IOModule  <----------------
+main

@@ -1,0 +1,6 @@
+Each subdirectory contains the input and the corresponding LAMMPS data for IRMOF-1 unitcell generated using pbc_datagen.
+The interaction between the metal atom (Zinc) and the ligand (carboxylate oxygen) are treated differently in each case.
+
+bonded: The interaction between Zinc and carboxylate oxygen is treated as a bond (harmonic, Morse, etc.)
+non-bonded: Interaction via dispersion and electrostatic (example Allendorf's FF for IRMOF-1)
+dummy: Each Zinc atom is represented by 7 particles and 6 of them are ficticious and are only point charges (called dummy atoms, hence the name dummy model)

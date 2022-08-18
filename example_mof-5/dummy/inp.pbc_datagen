@@ -1,0 +1,24 @@
+coor.xyz
+parm
+.TRUE.
+.TRUE.
+.TRUE.
+.TRUE.
+1.0D-1
+1.0D+0
+1.0D+0
+1.0D+0
+1.0D+0
+8
+C1  C
+C2  C
+C3  C
+H1  H
+O1  O
+O2  O
+Zn1 Zn
+X   X
+2
+Zn 0.5
+X 0.0
+example

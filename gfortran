@@ -1,0 +1,14 @@
+#!/bin/bash
+
+rm *.o *.mod 2>/dev/null
+gfortran -c -fcheck=bounds  data_structure.f90
+gfortran -c -fcheck=bounds  atomic_data.f90
+gfortran -c -fcheck=bounds  global_data.f90
+gfortran -c -fcheck=bounds  pbc.f90
+gfortran -c -fcheck=bounds  calculate.f90
+gfortran -c -fcheck=bounds  io.f90
+gfortran -c -fcheck=bounds  main.f90
+
+gfortran *.o -fcheck=bounds -o pbc_datagen
+
+rm *.o *.mod 2>/dev/null

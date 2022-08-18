@@ -1,0 +1,56 @@
+#Masses
+mass     1  12.011    # C1   
+mass     2  12.011    # C2   
+mass     3  12.011    # C3   
+mass     4   1.008    # H1   
+mass     5  15.999    # O1   
+mass     6  15.999    # O2   
+mass     7  65.409    # Zn1  
+#Pair Coefficients
+pair_coeff     1     1    # C1   
+pair_coeff     2     2    # C2   
+pair_coeff     3     3    # C3   
+pair_coeff     4     4    # H1   
+pair_coeff     5     5    # O1   
+pair_coeff     6     6    # O2   
+pair_coeff     7     7    # Zn1  
+#Bond Coefficients
+bond_coeff     1    # Zn1-O1
+bond_coeff     2    # Zn1-O2
+bond_coeff     3    # O2-C1
+bond_coeff     4    # C1-C2
+bond_coeff     5    # C2-C3
+bond_coeff     6    # C3-H1
+bond_coeff     7    # C3-C3
+#Angle Coefficients
+angle_coeff     1    # O1-Zn1-O2
+angle_coeff     2    # Zn1-O1-Zn1
+angle_coeff     3    # O2-Zn1-O2
+angle_coeff     4    # Zn1-O2-C1
+angle_coeff     5    # O2-C1-C2
+angle_coeff     6    # O2-C1-O2
+angle_coeff     7    # C1-C2-C3
+angle_coeff     8    # C3-C2-C3
+angle_coeff     9    # C2-C3-H1
+angle_coeff    10    # C2-C3-C3
+angle_coeff    11    # H1-C3-C3
+#Dihedral Coefficients
+dihedral_coeff     1    # O2-Zn1-O1-Zn1
+dihedral_coeff     2    # O2-Zn1-O1-Zn1
+dihedral_coeff     3    # O1-Zn1-O2-C1
+dihedral_coeff     4    # O2-Zn1-O2-C1
+dihedral_coeff     5    # Zn1-O2-C1-C2
+dihedral_coeff     6    # Zn1-O2-C1-O2
+dihedral_coeff     7    # O2-C1-C2-C3
+dihedral_coeff     8    # O2-C1-C2-C3
+dihedral_coeff     9    # C1-C2-C3-H1
+dihedral_coeff    10    # C1-C2-C3-C3
+dihedral_coeff    11    # C3-C2-C3-H1
+dihedral_coeff    12    # C3-C2-C3-C3
+dihedral_coeff    13    # C2-C3-C3-C2
+dihedral_coeff    14    # C2-C3-C3-H1
+dihedral_coeff    15    # H1-C3-C3-H1
+#Improper Coefficients
+improper_coeff     1    # C1-O2-C2-O2
+improper_coeff     2    # C2-C1-C3-C3
+improper_coeff     3    # C3-C2-H1-C3

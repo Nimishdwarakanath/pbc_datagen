@@ -1,0 +1,451 @@
+MODULE CalculateModule
+ USE GlobalDataModule
+ USE AtomicDataModule
+ USE PBCModule
+ IMPLICIT NONE
+ CONTAINS
+
+SUBROUTINE PopulateAtomicData ()
+ INTEGER                 :: i , j
+!Read the XYZ, parameter files and populate AtomicData
+ OPEN ( 52 , FILE = TRIM (ParameterFileName) , ACTION = 'READ' )
+ READ (52, * ) BoxParameters
+ CLOSE (52)
+
+ CALL CalculateBoxQuantities() !calculate HMatrix and IHMatrix
+
+ OPEN ( 51 , FILE = TRIM (XYZFileName) , ACTION = 'READ' )
+  READ ( 51, * ) TotalNumberOfAtoms
+  READ ( 51, * ) 
+  !Read AtomicType and AtomicCoordinates for each atom
+  ALLOCATE ( AtomicData ( TotalNumberOfAtoms ) )
+  DO i = 1 , TotalNumberOfAtoms
+   READ ( 51 , * ) AtomicData(i)%AtomicType, AtomicData(i)%AtomicCoordinates(:)
+  ENDDO
+ CLOSE ( 51 )
+
+ DO i = 1 , TotalNumberOfAtoms
+  AtomicData(i)%AtomicScaledCoordinates(:) = MATMUL ( IHMatrix , AtomicData(i)%AtomicCoordinates )
+ ENDDO
+
+ DO i = 1 , TotalNumberOfAtoms
+  !Find AtomicTypeIndex, AtomicSymbol for each atom
+  DO j = 1 , TotalNumberOfAtomTypes
+   IF ( TRIM ( AtomicData(i)%AtomicType ) .EQ. TRIM (TypeAndSymbolList ( j , 1 ) ) ) THEN
+    AtomicData(i)%AtomicTypeIndex = j
+    AtomicData(i)%AtomicSymbol = TypeAndSymbolList ( j , 2 )
+    EXIT
+   ENDIF
+  ENDDO
+
+  !Find AtomicNumber for each atom
+  DO j = 1 , NumberOfElements
+   IF ( TRIM ( AtomicData(i)%AtomicSymbol ) .EQ. TRIM ( AtomicSymbolArray (j) ) ) AtomicData(i)%AtomicNumber = j
+  ENDDO
+
+  !Assign AtomicvdWRadius and AtomicMass for each atom
+  IF ( vdWRadiusList (AtomicData(i)%AtomicTypeIndex) .GT. 1.0D+1) THEN
+   AtomicData(i)%AtomicvdWRadius = vdWRadiusArray (AtomicData(i)%AtomicNumber)
+  ELSE
+   AtomicData(i)%AtomicvdWRadius = vdWRadiusList (AtomicData(i)%AtomicTypeIndex)
+  ENDIF
+
+    AtomicData(i)%AtomicMass = AtomicMassArray(AtomicData(i)%AtomicNumber)
+
+ ENDDO
+
+ DEALLOCATE ( vdWRadiusList , TypeAndSymbolList )
+ENDSUBROUTINE PopulateAtomicData
+
+ SUBROUTINE GetBox ()
+  IMPLICIT NONE
+  REAL( KIND = 8), INTENT(IN) :: xlo,ylo,zlo,box_parameter(6)
+  REAL( KIND = 8) :: ralp, rbet, rgam
+  REAL( KIND = 8) :: ca,sa,cb,sb,cg,sg,h13,h23,h33,omg
+  REAL( KIND = 8) :: xhi,yhi,zhi,xy,yz,xz,lx,ly,lz
+  REAL( KIND = 8) :: boxparm(9)
+
+  ralp = box_parameter(4) * degtorad
+  rbet = box_parameter(5) * degtorad
+  rgam = box_parameter(6) * degtorad
+
+  ca  = DCOS(ralp)
+  cb  = DCOS(rbet)
+  cg  = DCOS(rgam)
+  lx  = box_parameter(1)
+  xy  = box_parameter(2)*cg
+  xz  = box_parameter(3)*cb
+  ly  = DSQRT( box_parameter(2)**2 - xy**2)
+  yz  = (box_parameter(2)*box_parameter(3)*ca - xy * xz)/ly
+  lz  = DSQRT(box_parameter(3)**2 - xz**2 - yz**2)
+  xhi = xlo + lx
+  yhi = ylo + ly
+  zhi = zlo + lz
+  boxparm = (/xlo,xhi,ylo,yhi,zlo,zhi,xy,yz,xz/)
+ ENDSUBROUTINE GetBox
+
+ SUBROUTINE GetBondList()
+  INTEGER :: i , j
+  REAL ( KIND = 8 ) :: distance
+  TotalNumberOfBonds = 0
+  ALLOCATE (BondData ( 20 * TotalNumberOfAtoms ) )
+  BondData%BondType = 0
+  !Uses o(N^2) algorithm.
+  DO i = 1 , TotalNumberOfAtoms - 1
+   DO j = i + 1 , TotalNumberOfAtoms
+     distance = PBCDistance ( i , j )
+    IF ( distance .LT. 0.6D0 * ( AtomicData(i)%AtomicvdWRadius + AtomicData(i)%AtomicvdWRadius) ) THEN
+     TotalNumberOfBonds = TotalNumberOfBonds + 1
+     BondData(TotalNumberOfBonds)%BondAtom(1) = i
+     BondData(TotalNumberOfBonds)%BondAtom(2) = j
+     BondData(TotalNumberOfBonds)%BondDistance = distance
+    ENDIF
+   ENDDO
+  ENDDO
+  CALL GetBondType ()
+ ENDSUBROUTINE GetBondList
+
+ FUNCTION IdentifyAngleFromBonds ( i , j ) RESULT (res)
+  INTEGER , INTENT ( IN ) :: i , j !ith and jth bond data
+  INTEGER  :: res ( 3 ) , t
+  
+  IF (BondData(i)%BondAtom(1) .EQ. BondData(j)%BondAtom(1)) THEN
+   res (1) = BondData(i)%BondAtom(2)
+   res (2) = BondData(i)%BondAtom(1)
+   res (3) = BondData(j)%BondAtom(2)
+  ELSEIF (BondData(i)%BondAtom(1) .EQ. BondData(j)%BondAtom(2)) THEN
+   res (1) = BondData(i)%BondAtom(2)
+   res (2) = BondData(i)%BondAtom(1)
+   res (3) = BondData(j)%BondAtom(1)
+  ELSEIF (BondData(i)%BondAtom(2) .EQ. BondData(j)%BondAtom(1)) THEN
+   res (1) = BondData(i)%BondAtom(1)
+   res (2) = BondData(i)%BondAtom(2)
+   res (3) = BondData(j)%BondAtom(2)
+  ELSEIF (BondData(i)%BondAtom(2) .EQ. BondData(j)%BondAtom(2)) THEN
+   res (1) = BondData(i)%BondAtom(1)
+   res (2) = BondData(i)%BondAtom(2)
+   res (3) = BondData(j)%BondAtom(1)
+  ELSE
+   res = 0
+  ENDIF
+
+  IF ( res (3) .LT. res (1) )THEN
+   t = res ( 3 )
+   res ( 3 ) = res ( 1 )
+   res ( 1 ) = t
+  ENDIF
+   
+ ENDFUNCTION IdentifyAngleFromBonds
+
+ SUBROUTINE GetAngleList()
+  INTEGER :: i , j 
+  INTEGER :: angle (3)
+  ALLOCATE ( AngleData ( TotalNumberOfAtoms * 20 ) )
+  TotalNumberOfAngles = 0
+  DO i = 1 , TotalNumberOfBonds - 1
+   DO j = i + 1 , TotalNumberOfBonds
+    angle = IdentifyAngleFromBonds ( i , j)
+    IF ( .NOT. ALL ( angle .EQ. 0 )) THEN
+    TotalNumberOfAngles = TotalNumberOfAngles + 1
+    AngleData(TotalNumberOfAngles)%AngleAtom(1) = angle (1)
+    AngleData(TotalNumberOfAngles)%AngleAtom(2) = angle (2)
+    AngleData(TotalNumberOfAngles)%AngleAtom(3) = angle (3)
+    ENDIF
+   ENDDO
+  ENDDO
+  DO i = 1 , TotalNumberOfAngles
+   AngleData(i)%AngleAngle = PBCAngle ( AngleData(i)%AngleAtom(1),AngleData(i)%AngleAtom(2),AngleData(i)%AngleAtom(3) )
+  ENDDO
+  CALL GetAngleType ()
+ ENDSUBROUTINE GetAngleList
+
+ FUNCTION IdentifyDihedralFromAngles ( i , j ) RESULT (res)
+  INTEGER , INTENT ( IN ) :: i , j !ith and jth angle data
+  INTEGER  :: res ( 4 ) , t
+
+      IF ( ( AngleData(i)%AngleAtom(2) == AngleData(j)%AngleAtom(3) ) &
+                               .AND. &
+           ( AngleData(i)%AngleAtom(3) == AngleData(j)%AngleAtom(2) ) ) THEN
+   res ( 1 ) = AngleData(i)%AngleAtom(1)
+   res ( 2 ) = AngleData(i)%AngleAtom(2)
+   res ( 3 ) = AngleData(i)%AngleAtom(3)
+   res ( 4 ) = AngleData(j)%AngleAtom(1)
+  ELSEIF ( ( AngleData(i)%AngleAtom(2) == AngleData(j)%AngleAtom(1) ) &
+                           .AND. &
+       ( AngleData(i)%AngleAtom(3) == AngleData(j)%AngleAtom(2) ) ) THEN
+   res ( 1 ) = AngleData(i)%AngleAtom(1)
+   res ( 2 ) = AngleData(i)%AngleAtom(2)
+   res ( 3 ) = AngleData(i)%AngleAtom(3)
+   res ( 4 ) = AngleData(j)%AngleAtom(3)
+  ELSEIF ( ( AngleData(i)%AngleAtom(2) == AngleData(j)%AngleAtom(3) ) &
+                           .AND. &
+       ( AngleData(i)%AngleAtom(1) == AngleData(j)%AngleAtom(2) ) ) THEN
+   res ( 1 ) = AngleData(i)%AngleAtom(3)
+   res ( 2 ) = AngleData(i)%AngleAtom(2)
+   res ( 3 ) = AngleData(i)%AngleAtom(1)
+   res ( 4 ) = AngleData(j)%AngleAtom(1)
+  ELSEIF ( ( AngleData(i)%AngleAtom(2) == AngleData(j)%AngleAtom(1) ) &
+                           .AND. &
+       ( AngleData(i)%AngleAtom(1) == AngleData(j)%AngleAtom(2) ) ) THEN
+   res ( 1 ) = AngleData(i)%AngleAtom(3)
+   res ( 2 ) = AngleData(i)%AngleAtom(2)
+   res ( 3 ) = AngleData(i)%AngleAtom(1)
+   res ( 4 ) = AngleData(j)%AngleAtom(3)
+  ELSE
+   res = 0
+  ENDIF
+  IF ( res (4) .LT. res (1) )THEN
+   t = res ( 4 )
+   res ( 4 ) = res ( 1 )
+   res ( 1 ) = t
+   t = res ( 2 )
+   res ( 2 ) = res ( 3 )
+   res ( 3 ) = t
+  ENDIF
+ ENDFUNCTION IdentifyDihedralFromAngles
+
+ SUBROUTINE GetDihedralList()
+  INTEGER :: i , j 
+  INTEGER :: dihedral (4)
+  ALLOCATE ( DihedralData ( TotalNumberOfAtoms * 20 ) )
+  TotalNumberOfDihedrals = 0
+  DO i = 1 , TotalNumberOfAngles - 1
+   DO j = i + 1 , TotalNumberOfAngles
+    dihedral = IdentifyDihedralFromAngles ( i , j)
+    IF ( .NOT. ANY ( dihedral .EQ. 0 )) THEN
+     TotalNumberOfDihedrals = TotalNumberOfDihedrals + 1
+     DihedralData(TotalNumberOfDihedrals)%DihedralAtom = dihedral
+    ENDIF
+   ENDDO
+  ENDDO
+  DO i = 1 , TotalNumberOfDihedrals
+   DihedralData(i)%DihedralAngle = PBCDihedralAngle ( DihedralData(i)%DihedralAtom(1), &
+                                   DihedralData(i)%DihedralAtom(2),DihedralData(i)%DihedralAtom(3), &
+                                   DihedralData(i)%DihedralAtom(4) )
+  ENDDO
+  CALL GetDihedralType ()
+ ENDSUBROUTINE GetDihedralList
+
+ FUNCTION IdentifyImproperFromAngles ( i , j ) RESULT (res)
+  INTEGER , INTENT ( IN ) :: i , j !ith and jth angle data
+  INTEGER  :: res ( 4 ) , t
+
+      IF ( ( AngleData(i)%AngleAtom(2) == AngleData(j)%AngleAtom(2) ) &
+                               .AND. &
+           ( AngleData(i)%AngleAtom(3) == AngleData(j)%AngleAtom(3) ) ) THEN
+   res ( 1 ) = AngleData(i)%AngleAtom(2) !i2
+   res ( 2 ) = AngleData(j)%AngleAtom(1) !j1
+   res ( 3 ) = AngleData(i)%AngleAtom(3) !i3
+   res ( 4 ) = AngleData(i)%AngleAtom(1) !i1
+  ELSEIF ( ( AngleData(i)%AngleAtom(2) == AngleData(j)%AngleAtom(2) ) &
+                           .AND. &
+       ( AngleData(i)%AngleAtom(3) == AngleData(j)%AngleAtom(1) ) ) THEN
+   res ( 1 ) = AngleData(i)%AngleAtom(2) !i2
+   res ( 2 ) = AngleData(j)%AngleAtom(3) !j3
+   res ( 3 ) = AngleData(i)%AngleAtom(3) !i3
+   res ( 4 ) = AngleData(i)%AngleAtom(1) !i1
+  ELSEIF ( ( AngleData(i)%AngleAtom(2) == AngleData(j)%AngleAtom(2) ) &
+                           .AND. &
+       ( AngleData(i)%AngleAtom(1) == AngleData(j)%AngleAtom(3) ) ) THEN
+   res ( 1 ) = AngleData(i)%AngleAtom(2) !i2
+   res ( 2 ) = AngleData(j)%AngleAtom(1) !j1
+   res ( 3 ) = AngleData(i)%AngleAtom(1) !i1
+   res ( 4 ) = AngleData(i)%AngleAtom(3) !i3
+  ELSEIF ( ( AngleData(i)%AngleAtom(2) == AngleData(j)%AngleAtom(2) ) &
+                           .AND. &
+       ( AngleData(i)%AngleAtom(1) == AngleData(j)%AngleAtom(1) ) ) THEN
+   res ( 1 ) = AngleData(i)%AngleAtom(2) !i2
+   res ( 2 ) = AngleData(j)%AngleAtom(3) !j3
+   res ( 3 ) = AngleData(i)%AngleAtom(1) !i1
+   res ( 4 ) = AngleData(i)%AngleAtom(3) !i3
+  ELSE
+   res = 0
+  ENDIF
+ ENDFUNCTION IdentifyImproperFromAngles
+
+ ! Appears to output repetitions
+ SUBROUTINE GetImproperList()
+  INTEGER :: i , j 
+  INTEGER :: improper (4)
+  ALLOCATE ( ImproperData ( TotalNumberOfAtoms * 20 ) )
+  TotalNumberOfImpropers = 0
+  DO i = 1 , TotalNumberOfAngles - 1
+   DO j = i + 1 , TotalNumberOfAngles
+    improper = IdentifyImproperFromAngles ( i , j)
+    IF ( .NOT. ANY ( improper .EQ. 0 )) THEN
+     TotalNumberOfImpropers = TotalNumberOfImpropers + 1
+     ImproperData(TotalNumberOfImpropers)%ImproperAtom = improper
+    ENDIF
+   ENDDO
+  ENDDO
+  DO i = 1 , TotalNumberOfImpropers
+   ImproperData(i)%ImproperAngle = PBCImproperAngle ( ImproperData(i)%ImproperAtom(1), &
+                                   ImproperData(i)%ImproperAtom(2),ImproperData(i)%ImproperAtom(3), &
+                                   ImproperData(i)%ImproperAtom(4) )
+  ENDDO
+  CALL GetImproperType ()
+  !improper types not assigned
+ ENDSUBROUTINE GetImproperList
+
+ SUBROUTINE GetBondType ()
+  INTEGER :: i , j , i2(2) , j2(2)
+  LOGICAL :: Reassign
+  IF ( .NOT. ALLOCATED ( BondTypeData ) ) THEN
+   ALLOCATE (BondTypeData ( TotalNumberOfBonds ))
+   TotalNumberOfBondTypes = 0
+  ENDIF
+  DO i = 1 , TotalNumberOfBonds
+   i2 ( 1 ) = AtomicData(BondData(i)%BondAtom(1))%AtomicTypeIndex
+   i2 ( 2 ) = AtomicData(BondData(i)%BondAtom(2))%AtomicTypeIndex
+   Reassign = .TRUE.
+   DO j = 1 , TotalNumberOfBondTypes
+    j2 = BondTypeData(j)%BondAtomType
+    IF ( SameArray ( i2 , j2 ) .AND. &
+    ( DABS (BondData(i)%BondDistance - BondTypeData(j)%BondDistance ) &
+                             .LT. BondLengthTolerance  ) ) THEN
+     BondData(i)%BondType = j
+     Reassign = .FALSE.
+     EXIT
+    ENDIF
+   ENDDO
+
+   IF ( Reassign ) THEN
+    TotalNumberOfBondTypes = TotalNumberOfBondTypes + 1
+    BondTypeData(TotalNumberOfBondTypes)%BondAtomType = i2
+    BondTypeData(TotalNumberOfBondTypes)%BondDistance = BondData(i)%BondDistance
+    BondData(i)%BondType = TotalNumberOfBondTypes
+   ENDIF
+  ENDDO
+ ENDSUBROUTINE GetBondType
+
+ !get angle, dihedral and improper types 
+
+ SUBROUTINE GetAngleType ()
+  INTEGER :: i , j , i3(3) , j3(3)
+  LOGICAL :: Reassign
+  IF ( .NOT. ALLOCATED ( AngleTypeData ) ) THEN
+   ALLOCATE (AngleTypeData ( TotalNumberOfAngles ))
+   TotalNumberOfAngleTypes = 0
+  ENDIF
+  DO i = 1 , TotalNumberOfAngles
+   i3 ( 1 ) = AtomicData(AngleData(i)%AngleAtom(1))%AtomicTypeIndex
+   i3 ( 2 ) = AtomicData(AngleData(i)%AngleAtom(2))%AtomicTypeIndex
+   i3 ( 3 ) = AtomicData(AngleData(i)%AngleAtom(3))%AtomicTypeIndex
+   Reassign = .TRUE.
+   DO j = 1 , TotalNumberOfAngleTypes
+    j3 = AngleTypeData(j)%AngleAtomType
+    IF ( SameArray ( i3 , j3 ) .AND. &
+    ( DABS (AngleData(i)%AngleAngle - AngleTypeData(j)%AngleAngle ) &
+                             .LT. AngleAngleTolerance  ) ) THEN
+     AngleData(i)%AngleType = j
+     Reassign = .FALSE.
+     EXIT
+    ENDIF
+   ENDDO
+   IF ( Reassign ) THEN
+    TotalNumberOfAngleTypes = TotalNumberOfAngleTypes + 1
+    AngleTypeData(TotalNumberOfAngleTypes)%AngleAtomType = i3
+    AngleTypeData(TotalNumberOfAngleTypes)%AngleAngle = AngleData(i)%AngleAngle
+    AngleData(i)%AngleType = TotalNumberOfAngleTypes
+   ENDIF
+  ENDDO
+ ENDSUBROUTINE GetAngleType
+
+ SUBROUTINE GetDihedralType ()
+  INTEGER :: i , j , i4(4) , j4(4)
+  LOGICAL :: Reassign
+  IF ( .NOT. ALLOCATED ( DihedralTypeData ) ) THEN
+   ALLOCATE (DihedralTypeData ( TotalNumberOfDihedrals ))
+   TotalNumberOfDihedralTypes = 0
+  ENDIF
+  DO i = 1 , TotalNumberOfDihedrals
+   i4 ( 1 ) = AtomicData(DihedralData(i)%DihedralAtom(1))%AtomicTypeIndex
+   i4 ( 2 ) = AtomicData(DihedralData(i)%DihedralAtom(2))%AtomicTypeIndex
+   i4 ( 3 ) = AtomicData(DihedralData(i)%DihedralAtom(3))%AtomicTypeIndex
+   i4 ( 4 ) = AtomicData(DihedralData(i)%DihedralAtom(4))%AtomicTypeIndex
+   Reassign = .TRUE.
+   DO j = 1 , TotalNumberOfDihedralTypes
+    j4 = DihedralTypeData(j)%DihedralAtomType
+    IF ( SameArray ( i4 , j4 ) .AND. &
+    ( DABS (DihedralData(i)%DihedralAngle - DihedralTypeData(j)%DihedralAngle ) &
+                             .LT. DihedralAngleTolerance  ) ) THEN
+     DihedralData(i)%DihedralType = j
+     Reassign = .FALSE.
+     EXIT
+    ENDIF
+   ENDDO
+   IF ( Reassign ) THEN
+    TotalNumberOfDihedralTypes = TotalNumberOfDihedralTypes + 1
+    DihedralTypeData(TotalNumberOfDihedralTypes)%DihedralAtomType = i4
+    DihedralTypeData(TotalNumberOfDihedralTypes)%DihedralAngle = DihedralData(i)%DihedralAngle
+    DihedralData(i)%DihedralType = TotalNumberOfDihedralTypes
+   ENDIF
+  ENDDO
+ ENDSUBROUTINE GetDihedralType
+
+ SUBROUTINE GetImproperType ()
+  INTEGER :: i , j , i4(4) , j4(4)
+  LOGICAL :: Reassign
+  IF ( .NOT. ALLOCATED ( ImproperTypeData ) ) THEN
+   ALLOCATE (ImproperTypeData ( TotalNumberOfImpropers ))
+   TotalNumberOfImproperTypes = 0
+  ENDIF
+  DO i = 1 , TotalNumberOfImpropers
+   i4 ( 1 ) = AtomicData(ImproperData(i)%ImproperAtom(1))%AtomicTypeIndex
+   i4 ( 2 ) = AtomicData(ImproperData(i)%ImproperAtom(2))%AtomicTypeIndex
+   i4 ( 3 ) = AtomicData(ImproperData(i)%ImproperAtom(3))%AtomicTypeIndex
+   i4 ( 4 ) = AtomicData(ImproperData(i)%ImproperAtom(4))%AtomicTypeIndex
+   Reassign = .TRUE.
+   DO j = 1 , TotalNumberOfImproperTypes
+    j4 = ImproperTypeData(j)%ImproperAtomType
+    IF ( SameImproperType ( i4 , j4 ) .AND. &
+    ( DABS (ImproperData(i)%ImproperAngle - ImproperTypeData(j)%ImproperAngle ) &
+                             .LT. ImproperAngleTolerance  ) ) THEN
+     ImproperData(i)%ImproperType = j
+     Reassign = .FALSE.
+     EXIT
+    ENDIF
+   ENDDO
+   IF ( Reassign ) THEN
+    TotalNumberOfImproperTypes = TotalNumberOfImproperTypes + 1
+    ImproperTypeData(TotalNumberOfImproperTypes)%ImproperAtomType = i4
+    ImproperTypeData(TotalNumberOfImproperTypes)%ImproperAngle = ImproperData(i)%ImproperAngle
+    ImproperData(i)%ImproperType = TotalNumberOfImproperTypes
+   ENDIF
+  ENDDO
+ ENDSUBROUTINE GetImproperType
+
+
+ FUNCTION SameArray ( i , j ) RESULT ( res )
+  IMPLICIT NONE
+  INTEGER , INTENT (IN) :: i (:) , j (:)
+  INTEGER , ALLOCATABLE :: k (:)
+  INTEGER               :: m
+  LOGICAL :: t1, t2, res
+  res = .FALSE.
+  ALLOCATE ( k ( SIZE ( i ) ) )
+  k = (/ (j (m) , m = SIZE (j) , 1 , -1) /)
+  t1 = ALL ( i .EQ. j )
+  t2 = ALL ( i .EQ. k )
+  res = t1 .OR. t2
+ ENDFUNCTION SameArray 
+
+ FUNCTION SameImproperType ( i , j ) RESULT ( res )
+  IMPLICIT NONE
+  INTEGER , INTENT (IN) :: i (4) , j (4)
+  INTEGER               :: m , n , o
+  LOGICAL :: t1, res
+  res = .FALSE.
+  o = 0
+  t1 = i (1) .EQ. j (1)
+  IF ( t1 ) THEN
+   DO m = 2 , 4
+    DO n = 2 , 4
+     IF (i ( m ) == j ( n )) o = o + 1
+    ENDDO
+   ENDDO
+   IF ( o .GE. 3 ) res = .TRUE.
+  ENDIF
+ ENDFUNCTION SameImproperType 
+
+ENDMODULE CalculateModule

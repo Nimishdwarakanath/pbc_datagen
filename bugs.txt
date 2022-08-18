@@ -1,0 +1,13 @@
+1. The number of Dihedral and Improper types increase with more number of cells.
+One observation:
+Dihedral:
+a--b--c
+       \   
+        d
+
+\_abc making close to 180 degrees are being considered for dihedrals. The problem is abc doesn't form a plane.
+
+This results in grave problems if 1-4 interaction is scaled by less than 1.0 as merely setting the dihedral coefficient to be zero doesn't help.
+
+Resovled
+Tue Mar  3 18:01:21 IST 2020
