@@ -1,1 +1,1 @@
-#Welcome to pbc_lammps_datagen
+#Welcome to pbc_datagen
